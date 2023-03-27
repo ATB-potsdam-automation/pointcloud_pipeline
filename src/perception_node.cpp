@@ -54,9 +54,10 @@ class PerceptionNode : public rclcpp::Node
             /*
              * SET UP PARAMETERS (COULD BE INPUT FROM LAUNCH FILE/TERMINAL)
              */
-            rclcpp::Parameter cloud_topic_param, world_frame_param, camera_frame_param, voxel_leaf_size_param,
+            rclcpp::Parameter cloud_topic_param, world_frame_param, camera_frame_param, pcl_data_path_param, voxel_leaf_size_param,
                 x_filter_min_param, x_filter_max_param, y_filter_min_param, y_filter_max_param, z_filter_min_param,
-                z_filter_max_param, plane_max_iter_param, plane_dist_thresh_param, cluster_tol_param,
+                z_filter_max_param, x_inv_filter_min_param, x_inv_filter_max_param, y_inv_filter_min_param, y_inv_filter_max_param, z_inv_filter_min_param,
+                z_inv_filter_max_param, plane_max_iter_param, plane_dist_thresh_param, cluster_tol_param,
                 cluster_min_size_param, cluster_max_size_param;
 
             RCLCPP_INFO(this->get_logger(), "Getting parameters");
@@ -64,6 +65,7 @@ class PerceptionNode : public rclcpp::Node
             this->get_parameter_or("cloud_topic", cloud_topic_param, rclcpp::Parameter("", "/kinect/depth_registered/points"));
             this->get_parameter_or("world_frame", world_frame_param, rclcpp::Parameter("", "kinect_link"));
             this->get_parameter_or("camera_frame", camera_frame_param, rclcpp::Parameter("", "kinect_link"));
+            this->get_parameter_or("pcl_data_path", pcl_data_path_param, rclcpp::Parameter("", "/home/karuna/Data/pcd/"));
             this->get_parameter_or("voxel_leaf_size", voxel_leaf_size_param, rclcpp::Parameter("", 0.002));
             this->get_parameter_or("x_filter_min", x_filter_min_param, rclcpp::Parameter("", -2.5));
             this->get_parameter_or("x_filter_max", x_filter_max_param, rclcpp::Parameter("", 2.5));
@@ -71,6 +73,12 @@ class PerceptionNode : public rclcpp::Node
             this->get_parameter_or("y_filter_max", y_filter_max_param, rclcpp::Parameter("", 2.5));
             this->get_parameter_or("z_filter_min", z_filter_min_param, rclcpp::Parameter("", -2.5));
             this->get_parameter_or("z_filter_max", z_filter_max_param, rclcpp::Parameter("", 2.5));
+            this->get_parameter_or("x_inv_filter_min", x_inv_filter_min_param, rclcpp::Parameter("", -2.5));
+            this->get_parameter_or("x_inv_filter_max", x_inv_filter_max_param, rclcpp::Parameter("", 2.5));
+            this->get_parameter_or("y_inv_filter_min", y_inv_filter_min_param, rclcpp::Parameter("", -2.5));
+            this->get_parameter_or("y_inv_filter_max", y_inv_filter_max_param, rclcpp::Parameter("", 2.5));
+            this->get_parameter_or("z_inv_filter_min", z_inv_filter_min_param, rclcpp::Parameter("", -2.5));
+            this->get_parameter_or("z_inv_filter_max", z_inv_filter_max_param, rclcpp::Parameter("", 2.5));
             this->get_parameter_or("plane_max_iterations", plane_max_iter_param, rclcpp::Parameter("", 50));
             this->get_parameter_or("plane_distance_threshold", plane_dist_thresh_param, rclcpp::Parameter("", 0.05));
             this->get_parameter_or("cluster_tolerance", cluster_tol_param, rclcpp::Parameter("", 0.01));
@@ -81,12 +89,19 @@ class PerceptionNode : public rclcpp::Node
             world_frame = world_frame_param.as_string();
             camera_frame = camera_frame_param.as_string();
             voxel_leaf_size = float(voxel_leaf_size_param.as_double());
+            pcl_data_path = pcl_data_path_param.as_string();
             x_filter_min = x_filter_min_param.as_double();
             x_filter_max = x_filter_max_param.as_double();
             y_filter_min = y_filter_min_param.as_double();
             y_filter_max = y_filter_max_param.as_double();
             z_filter_min = z_filter_min_param.as_double();
             z_filter_max = z_filter_max_param.as_double();
+            x_inv_filter_min = x_inv_filter_min_param.as_double();
+            x_inv_filter_max = x_inv_filter_max_param.as_double();
+            y_inv_filter_min = y_inv_filter_min_param.as_double();
+            y_inv_filter_max = y_inv_filter_max_param.as_double();
+            z_inv_filter_min = z_inv_filter_min_param.as_double();
+            z_inv_filter_max = z_inv_filter_max_param.as_double();
             plane_max_iter = plane_max_iter_param.as_int();
             plane_dist_thresh = plane_dist_thresh_param.as_double();
             cluster_tol = cluster_tol_param.as_double();
@@ -129,13 +144,25 @@ class PerceptionNode : public rclcpp::Node
             pcl::fromROSMsg(*recent_cloud, cloud);
             pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_ptr(new pcl::PointCloud<pcl::PointXYZ>(cloud));
             pcl::PointCloud<pcl::PointXYZ> xyz_filtered_cloud;
-            pcl::CropBox<pcl::PointXYZ> crop;
-            crop.setInputCloud(cloud_ptr);
-            Eigen::Vector4f min_point = Eigen::Vector4f(x_filter_min, y_filter_min, z_filter_min, 0);
-            Eigen::Vector4f max_point = Eigen::Vector4f(x_filter_max, y_filter_max, z_filter_max, 0);
-            crop.setMin(min_point);
-            crop.setMax(max_point);
-            crop.filter(xyz_filtered_cloud);
+            pcl::CropBox<pcl::PointXYZ> crop1;
+            crop1.setInputCloud(cloud_ptr);
+            Eigen::Vector4f min_point_1 = Eigen::Vector4f(x_filter_min, y_filter_min, z_filter_min, 0);
+            Eigen::Vector4f max_point_1 = Eigen::Vector4f(x_filter_max, y_filter_max, z_filter_max, 0);
+            crop1.setMin(min_point_1);
+            crop1.setMax(max_point_1);
+            crop1.filter(xyz_filtered_cloud);
+
+            pcl::CropBox<pcl::PointXYZ> crop2;
+            pcl::PointCloud<pcl::PointXYZ>::Ptr filter1_cloud(new pcl::PointCloud<pcl::PointXYZ>(xyz_filtered_cloud));
+            pcl::PointCloud<pcl::PointXYZ> xyz_inv_filtered_cloud;
+            crop2.setInputCloud(filter1_cloud);
+            crop2.setNegative (true);
+            Eigen::Vector4f min_point_2 = Eigen::Vector4f(x_inv_filter_min, y_inv_filter_min, z_inv_filter_min, 0);
+            Eigen::Vector4f max_point_2 = Eigen::Vector4f(x_inv_filter_max, y_inv_filter_max, z_inv_filter_max, 0);
+            crop2.setMin(min_point_2);
+            crop2.setMax(max_point_2);
+            crop2.filter(xyz_inv_filtered_cloud);
+
 
             /*
              * TRANSFORM PointCloud2 FROM CAMERA FRAME TO WORLD FRAME
@@ -154,7 +181,8 @@ class PerceptionNode : public rclcpp::Node
             }
 
             sensor_msgs::msg::PointCloud2 xyz_filter_cloud_msg;
-            pcl::toROSMsg(xyz_filtered_cloud, xyz_filter_cloud_msg);
+            pcl::toROSMsg(xyz_inv_filtered_cloud, xyz_filter_cloud_msg);
+            // pcl::toROSMsg(xyz_filtered_cloud, xyz_filter_cloud_msg);
             sensor_msgs::msg::PointCloud2 transformed_cloud;
             pcl_ros::transformPointCloud(world_frame, stransform, xyz_filter_cloud_msg, transformed_cloud);
             pcl::PointCloud<pcl::PointXYZ> final_cloud;
@@ -163,7 +191,7 @@ class PerceptionNode : public rclcpp::Node
 
             std::string fname;
 
-            fname = "/workspaces/ros2_fieldfriend/pcd/" + boost::lexical_cast<std::string>(transformed_cloud.header.stamp.nanosec) + ".pcd";
+            fname = pcl_data_path + boost::lexical_cast<std::string>(transformed_cloud.header.stamp.nanosec) + ".pcd";
      
             impl_.writeBinary(
                 fname, final_cloud);
@@ -216,10 +244,10 @@ class PerceptionNode : public rclcpp::Node
             // pcl::PointCloud<pcl::PointXYZ> xyz_filtered_cloud;
             // pcl::CropBox<pcl::PointXYZ> crop;
             // crop.setInputCloud(cloud_voxel_filtered);
-            // Eigen::Vector4f min_point = Eigen::Vector4f(x_filter_min, y_filter_min, z_filter_min, 0);
-            // Eigen::Vector4f max_point = Eigen::Vector4f(x_filter_max, y_filter_max, z_filter_max, 0);
-            // crop.setMin(min_point);
-            // crop.setMax(max_point);
+            // Eigen::Vector4f min_point_1 = Eigen::Vector4f(x_filter_min, y_filter_min, z_filter_min, 0);
+            // Eigen::Vector4f max_point_1 = Eigen::Vector4f(x_filter_max, y_filter_max, z_filter_max, 0);
+            // crop.setMin(min_point_1);
+            // crop.setMax(max_point_1);
             // crop.filter(xyz_filtered_cloud);
 
             /* ========================================
@@ -449,6 +477,7 @@ class PerceptionNode : public rclcpp::Node
         std::string cloud_topic;
         std::string world_frame;
         std::string camera_frame;
+        std::string pcl_data_path;
         float voxel_leaf_size;
         float x_filter_min;
         float x_filter_max;
@@ -456,6 +485,12 @@ class PerceptionNode : public rclcpp::Node
         float y_filter_max;
         float z_filter_min;
         float z_filter_max;
+        float x_inv_filter_min;
+        float x_inv_filter_max;
+        float y_inv_filter_min;
+        float y_inv_filter_max;
+        float z_inv_filter_min;
+        float z_inv_filter_max;
         int plane_max_iter;
         float plane_dist_thresh;
         float cluster_tol;
